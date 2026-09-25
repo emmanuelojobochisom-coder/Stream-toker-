@@ -15,6 +15,7 @@
       }
     },
     "production": {
+      "node": "22.22.2",
       "autoIncrement": true
     }
   },
