@@ -4,8 +4,16 @@
     "slug": "stream-toker",
     "version": "1.0.0",
     "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "platforms": [
+      "android",
+      "ios"
+    ],
     "android": {
       "package": "com.streamtoker.app"
+    },
+    "ios": {
+      "bundleIdentifier": "com.streamtoker.app"
     }
   }
 }
