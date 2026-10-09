@@ -1,25 +1,442 @@
-{
-  "expo": {
-    "name": "Stream Toker",
-    "slug": "stream-toker-2",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "userInterfaceStyle": "dark",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
-    "android": {
-      "package": "com.streamtoker.app"
-    },
-    "ios": {
-      "bundleIdentifier": "com.streamtoker.app"
-    },
-    "owner": "stream-toker-2",
-    "extra": {
-      "eas": {
-        "projectId": "68feb2f6-1068-44d8-818a-26c4f514fd52"
-      }
-    }
-  }
+import React, {useMemo, useState} from 'react';
+import {Alert, FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
+import {NavigationContainer} from '@react-navigation/native';
+import {createNativeStackNavigator} from '@react-navigation/native-stack';
+import {Ionicons} from '@expo/vector-icons';
+import {StatusBar} from 'expo-status-bar';
+
+const Stack=createNativeStackNavigator();
+
+const initialVideos=[
+ {id:'1',name:'Amina Global',handle:'@amina_global',caption:'New day, new energy 🌍✨',likes:24800,comments:1204,followers:120000,bg:'#242044'},
+ {id:'2',name:'Jay Live',handle:'@jaylive',caption:'Who is joining my live tonight? 🔴',likes:18200,comments:834,followers:8400,bg:'#173a46'},
+ {id:'3',name:'Kofi Music',handle:'@kofi_music',caption:'A little music for your evening 🎶',likes:51400,comments:2912,followers:4000000,bg:'#43223e'}
+];
+
+const chats=[
+ {id:'1',name:'Amina',last:'Thanks for the gift! 🎁'},
+ {id:'2',name:'Jay',last:'See you on live.'},
+ {id:'3',name:'Kofi',last:'New song tomorrow 🎶'}
+];
+
+function App(){
+ return <>
+  <StatusBar style="light"/>
+  <NavigationContainer>
+   <Stack.Navigator screenOptions={{headerShown:false}}>
+    <Stack.Screen name="Login" component={Login}/>
+    <Stack.Screen name="Home" component={Home}/>
+    <Stack.Screen name="Discover" component={Discover}/>
+    <Stack.Screen name="Create" component={Create}/>
+    <Stack.Screen name="Live" component={Live}/>
+    <Stack.Screen name="Messages" component={Messages}/>
+    <Stack.Screen name="Chat" component={Chat}/>
+    <Stack.Screen name="Profile" component={Profile}/>
+    <Stack.Screen name="Admin" component={Admin}/>
+   </Stack.Navigator>
+  </NavigationContainer>
+ </>
 }
+
+function Login({navigation}){
+ const [phone,setPhone]=useState('');
+ return <SafeAreaView style={s.page}>
+  <View style={s.login}>
+   <Text style={s.logo}>STREAM TOKER</Text>
+   <Text style={s.h1}>Welcome</Text>
+   <Text style={s.muted}>Create your account with your phone number.</Text>
+   <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone number" placeholderTextColor="#777" style={s.input}/>
+   <TouchableOpacity style={s.primary} onPress={()=>phone.trim()?navigation.replace('Home'):Alert.alert('Enter phone number','Add a phone number to continue.')}>
+    <Text style={s.primaryText}>Continue</Text>
+   </TouchableOpacity>
+   <Text style={s.tiny}>Demo authentication is active in this build. Production OTP will be connected to the backend.</Text>
+  </View>
+ </SafeAreaView>
+}
+
+function Home({navigation}){
+ const [liked,setLiked]=useState({});
+ const [gift,setGift]=useState(null);
+ const [videos,setVideos]=useState(initialVideos);
+
+ const toggle=id=>{
+  setLiked(x=>({...x,[id]:!x[id]}));
+  setVideos(v=>v.map(x=>x.id===id?{...x,likes:x.likes+(liked[id]?-1:1)}:x));
+ };
+
+ return <View style={s.home}>
+  <View style={s.top}>
+   <Text style={s.logo}>STREAM TOKER</Text>
+   <View style={s.topIcons}>
+    <Ionicons name="search-outline" size={24} color="#fff" onPress={()=>navigation.navigate('Discover')}/>
+    <Ionicons name="chatbubble-ellipses-outline" size={24} color="#fff" onPress={()=>navigation.navigate('Messages')}/>
+    <Ionicons name="notifications-outline" size={24} color="#fff" onPress={()=>Alert.alert('Notifications','No new notifications.')}/>
+   </View>
+  </View>
+
+  <FlatList
+   data={videos}
+   pagingEnabled
+   keyExtractor={x=>x.id}
+   showsVerticalScrollIndicator={false}
+   renderItem={({item})=>
+    <View style={[s.video,{backgroundColor:item.bg}]}>
+     <View style={s.fake}>
+      <Ionicons name="play" size={34} color="#fff"/>
+      <Text style={s.demo}>VIDEO PREVIEW</Text>
+     </View>
+
+     <View style={s.videoBottom}>
+      <View style={s.caption}>
+       <View style={s.creator}>
+        <View style={s.avatar}><Text style={s.avatarText}>{item.name[0]}</Text></View>
+        <View>
+         <Text style={s.name}>{item.name} ✓</Text>
+         <Text style={s.handle}>{item.handle}</Text>
+        </View>
+        <TouchableOpacity style={s.follow} onPress={()=>Alert.alert('Following',`You followed ${item.name}.`)}>
+         <Text style={s.followText}>Follow</Text>
+        </TouchableOpacity>
+       </View>
+       <Text style={s.captionText}>{item.caption}</Text>
+      </View>
+
+      <View style={s.actions}>
+       <Action icon={liked[item.id]?'heart':'heart-outline'} label={compact(item.likes)} active={liked[item.id]} onPress={()=>toggle(item.id)}/>
+       <Action icon="chatbubble-ellipses-outline" label={compact(item.comments)} onPress={()=>Alert.alert('Comments','Comment thread is ready for backend connection.')}/>
+       <Action icon="gift-outline" label="Gift" onPress={()=>setGift(item)}/>
+       <Action icon="share-social-outline" label="Share" onPress={()=>Alert.alert('Share','Video share link will be generated by the backend.')}/>
+      </View>
+     </View>
+    </View>
+   }
+  />
+
+  <Nav navigation={navigation} active="Home"/>
+  {gift&&<GiftModal video={gift} onClose={()=>setGift(null)}/>}
+ </View>
+}
+
+function compact(n){
+ return n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'K':String(n);
+}
+
+function Action({icon,label,onPress,active}){
+ return <TouchableOpacity style={s.action} onPress={onPress}>
+  <Ionicons name={icon} size={30} color={active?'#ff2d55':'#fff'}/>
+  <Text style={s.actionLabel}>{label}</Text>
+ </TouchableOpacity>
+}
+
+function GiftModal({video,onClose}){
+ const gifts=[['Rose','🌹',10],['Heart','❤️',50],['Diamond','💎',500],['Crown','👑',2000]];
+
+ return <Modal transparent animationType="slide" visible>
+  <View style={s.modalShade}>
+   <View style={s.sheet}>
+    <Text style={s.h2}>Gift {video.name}</Text>
+    <Text style={s.muted}>Choose a virtual gift.</Text>
+    <View style={s.giftGrid}>
+     {gifts.map(g=>
+      <TouchableOpacity key={g[0]} style={s.gift} onPress={()=>{
+       onClose();
+       Alert.alert('Gift sent',`${g[1]} ${g[0]} • ${g[2]} coins`);
+      }}>
+       <Text style={s.giftEmoji}>{g[1]}</Text>
+       <Text style={s.name}>{g[0]}</Text>
+       <Text style={s.muted}>{g[2]} coins</Text>
+      </TouchableOpacity>
+     )}
+    </View>
+    <TouchableOpacity onPress={onClose}>
+     <Text style={s.close}>Cancel</Text>
+    </TouchableOpacity>
+   </View>
+  </View>
+ </Modal>
+}
+
+function Discover({navigation}){
+ return <View style={s.page}>
+  <Text style={s.title}>Discover</Text>
+  <TextInput placeholder="Search people, videos, countries..." placeholderTextColor="#777" style={s.input}/>
+  <Text style={s.section}>Trending creators</Text>
+
+  {initialVideos.concat([
+   {id:'4',name:'Lina Star',handle:'@lina_star',followers:900000},
+   {id:'5',name:'Musa Official',handle:'@musa_official',followers:420000}
+  ]).map(x=>
+   <View style={s.row} key={x.id}>
+    <View style={s.avatar}/>
+    <View style={{flex:1}}>
+     <Text style={s.name}>{x.name}</Text>
+     <Text style={s.handle}>{x.handle} • {compact(x.followers||0)} followers</Text>
+    </View>
+    <TouchableOpacity style={s.follow} onPress={()=>Alert.alert('Following',`You followed ${x.name}.`)}>
+     <Text style={s.followText}>Follow</Text>
+    </TouchableOpacity>
+   </View>
+  )}
+
+  <Nav navigation={navigation} active="Discover"/>
+ </View>
+}
+
+function Create({navigation}){
+ const [title,setTitle]=useState('');
+
+ return <View style={s.page}>
+  <Text style={s.title}>Create</Text>
+
+  <View style={s.createBox}>
+   <Ionicons name="cloud-upload-outline" size={50} color="#ff2d55"/>
+   <Text style={s.h2}>Post a video</Text>
+   <Text style={s.muted}>Select a video, add a caption, then publish.</Text>
+   <TextInput value={title} onChangeText={setTitle} placeholder="Write a caption..." placeholderTextColor="#777" style={s.input}/>
+   <TouchableOpacity style={s.primary} onPress={()=>Alert.alert('Upload ready',`"${title||'Untitled video'}" is queued for upload. Production storage will be connected next.`)}>
+    <Text style={s.primaryText}>Choose video & Publish</Text>
+   </TouchableOpacity>
+  </View>
+
+  <View style={s.createBox}>
+   <Ionicons name="radio-outline" size={50} color="#7c4dff"/>
+   <Text style={s.h2}>Go Live</Text>
+   <Text style={s.muted}>Live streaming unlocks at 1,000 followers.</Text>
+   <TouchableOpacity style={s.secondary} onPress={()=>navigation.navigate('Live')}>
+    <Text style={s.secondaryText}>Check Live Access</Text>
+   </TouchableOpacity>
+  </View>
+
+  <Nav navigation={navigation} active="Create"/>
+ </View>
+}
+
+function Live({navigation}){
+ const followers=0;
+ const eligible=followers>=1000;
+
+ return <View style={s.page}>
+  <Text style={s.title}>Live</Text>
+  <View style={s.liveCard}>
+   <Ionicons name="radio" size={52} color="#ff2d55"/>
+   <Text style={s.h2}>Live streaming</Text>
+   <Text style={s.muted}>You have {followers.toLocaleString()} followers. Live unlocks at 1,000.</Text>
+   <TouchableOpacity style={[s.primary,!eligible&&{opacity:.45}]} disabled={!eligible} onPress={()=>Alert.alert('Start Live','Camera, microphone and live-room services will connect here.')}>
+    <Text style={s.primaryText}>{eligible?'Start Live':'Locked — 1,000 followers required'}</Text>
+   </TouchableOpacity>
+  </View>
+
+  <Text style={s.section}>Creator rewards</Text>
+  <View style={s.info}>
+   <Text style={s.name}>4,000,000 followers</Text>
+   <Text style={s.muted}>Owner-configured monthly creator reward: ₦59,000.</Text>
+  </View>
+
+  <Nav navigation={navigation} active="Live"/>
+ </View>
+}
+
+function Messages({navigation}){
+ return <View style={s.page}>
+  <Text style={s.title}>Messages</Text>
+
+  {chats.map(x=>
+   <TouchableOpacity style={s.row} key={x.id} onPress={()=>navigation.navigate('Chat',{name:x.name})}>
+    <View style={s.avatar}/>
+    <View>
+     <Text style={s.name}>{x.name}</Text>
+     <Text style={s.handle}>{x.last}</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={20} color="#777" style={{marginLeft:'auto'}}/>
+   </TouchableOpacity>
+  )}
+
+  <Text style={s.section}>Gifting</Text>
+  <Text style={s.muted}>Virtual gifts are represented as coins. In production, coin purchases and creator payouts will be processed through compliant payment systems.</Text>
+ </View>
+}
+
+function Chat({route}){
+ const [text,setText]=useState('');
+ const [msgs,setMsgs]=useState([{id:'1',mine:false,text:'Hey! Welcome to Stream Toker.'}]);
+
+ return <View style={s.page}>
+  <Text style={s.title}>{route.params?.name||'Chat'}</Text>
+
+  <FlatList
+   data={msgs}
+   keyExtractor={x=>x.id}
+   contentContainerStyle={{padding:20}}
+   renderItem={({item})=>
+    <View style={[s.bubble,item.mine?s.mine:s.theirs]}>
+     <Text style={s.bubbleText}>{item.text}</Text>
+    </View>
+   }
+  />
+
+  <View style={s.composer}>
+   <TextInput value={text} onChangeText={setText} placeholder="Message..." placeholderTextColor="#777" style={[s.input,{margin:0,flex:1}]}/>
+   <TouchableOpacity style={s.send} onPress={()=>{
+    if(text.trim()){
+     setMsgs(m=>[...m,{id:String(Date.now()),mine:true,text:text.trim()}]);
+     setText('');
+    }
+   }}>
+    <Ionicons name="send" size={22} color="#fff"/>
+   </TouchableOpacity>
+  </View>
+ </View>
+}
+
+function Profile({navigation}){
+ return <View style={s.page}>
+  <View style={s.profile}>
+   <View style={s.avatarLarge}><Text style={s.avatarText}>T</Text></View>
+   <Text style={s.title}>Your Profile</Text>
+   <Text style={s.handle}>@your_username</Text>
+
+   <View style={s.stats}>
+    <Stat n="0" t="Following"/>
+    <Stat n="0" t="Followers"/>
+    <Stat n="0" t="Likes"/>
+   </View>
+
+   <TouchableOpacity style={s.secondary}>
+    <Text style={s.secondaryText}>Edit Profile</Text>
+   </TouchableOpacity>
+  </View>
+
+  <View style={s.info}>
+   <Text style={s.name}>Creator dashboard</Text>
+   <Text style={s.muted}>Track followers, gifts, subscriptions, video performance and reward eligibility.</Text>
+  </View>
+
+  <TouchableOpacity style={s.admin} onPress={()=>navigation.navigate('Admin')}>
+   <Ionicons name="settings-outline" size={20} color="#fff"/>
+   <Text style={s.adminText}>Owner Admin</Text>
+  </TouchableOpacity>
+
+  <Nav navigation={navigation} active="Profile"/>
+ </View>
+}
+
+function Stat({n,t}){
+ return <View style={{alignItems:'center',marginHorizontal:16}}>
+  <Text style={s.h2}>{n}</Text>
+  <Text style={s.muted}>{t}</Text>
+ </View>
+}
+
+function Admin(){
+ const [reward,setReward]=useState('59000');
+ const [threshold,setThreshold]=useState('4000000');
+
+ return <View style={s.page}>
+  <ScrollView>
+   <Text style={s.title}>Owner Admin</Text>
+
+   <View style={s.info}>
+    <Text style={s.name}>Creator reward rule</Text>
+    <Text style={s.muted}>Configure the milestone and monthly amount. These values are demo settings until connected to a secure backend.</Text>
+
+    <TextInput value={threshold} onChangeText={setThreshold} keyboardType="number-pad" style={s.input}/>
+    <TextInput value={reward} onChangeText={setReward} keyboardType="number-pad" style={s.input}/>
+
+    <TouchableOpacity style={s.primary} onPress={()=>Alert.alert('Saved',`Reward: ₦${Number(reward||0).toLocaleString()} / month at ${Number(threshold||0).toLocaleString()} followers.`)}>
+     <Text style={s.primaryText}>Save reward rule</Text>
+    </TouchableOpacity>
+   </View>
+
+   <View style={s.info}>
+    <Text style={s.name}>Moderation</Text>
+    <Text style={s.muted}>Reports, blocked users, content review, live-room moderation and account actions will be managed here.</Text>
+   </View>
+
+   <View style={s.info}>
+    <Text style={s.name}>Monetization</Text>
+    <Text style={s.muted}>Gifts, subscriptions, promotions and payout records will be connected to server-side payment logic.</Text>
+   </View>
+  </ScrollView>
+ </View>
+}
+
+function Nav({navigation,active}){
+ return <View style={s.nav}>
+  <N icon="home" label="Home" active={active==='Home'} onPress={()=>navigation.navigate('Home')}/>
+  <N icon="compass-outline" label="Discover" active={active==='Discover'} onPress={()=>navigation.navigate('Discover')}/>
+  <TouchableOpacity style={s.createBtn} onPress={()=>navigation.navigate('Create')}>
+   <Ionicons name="add" size={31} color="#111"/>
+  </TouchableOpacity>
+  <N icon="radio-outline" label="Live" active={active==='Live'} onPress={()=>navigation.navigate('Live')}/>
+  <N icon="person-outline" label="Profile" active={active==='Profile'} onPress={()=>navigation.navigate('Profile')}/>
+ </View>
+}
+
+function N({icon,label,active,onPress}){
+ return <TouchableOpacity onPress={onPress} style={s.nitem}>
+  <Ionicons name={icon} size={23} color={active?'#ff2d55':'#aaa'}/>
+  <Text style={{color:active?'#ff2d55':'#aaa',fontSize:11}}>{label}</Text>
+ </TouchableOpacity>
+}
+
+const s=StyleSheet.create({
+ page:{flex:1,backgroundColor:'#09090d',paddingTop:40},
+ home:{flex:1,backgroundColor:'#08080c'},
+ top:{position:'absolute',top:42,left:0,right:0,zIndex:5,paddingHorizontal:18,height:48,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+ topIcons:{flexDirection:'row',gap:18},
+ logo:{color:'#fff',fontWeight:'900',fontSize:19,letterSpacing:1},
+ video:{height:760,paddingTop:110,paddingBottom:75,justifyContent:'space-between'},
+ fake:{flex:1,alignItems:'center',justifyContent:'center'},
+ demo:{color:'rgba(255,255,255,.55)',fontSize:11,marginTop:10,letterSpacing:1},
+ videoBottom:{paddingHorizontal:15,flexDirection:'row',alignItems:'flex-end'},
+ caption:{flex:1,paddingRight:8},
+ creator:{flexDirection:'row',alignItems:'center'},
+ avatar:{width:42,height:42,borderRadius:21,backgroundColor:'#444',alignItems:'center',justifyContent:'center',marginRight:10},
+ avatarLarge:{width:90,height:90,borderRadius:45,backgroundColor:'#333',alignItems:'center',justifyContent:'center'},
+ avatarText:{color:'#fff',fontWeight:'900',fontSize:17},
+ name:{color:'#fff',fontSize:15,fontWeight:'800'},
+ handle:{color:'#aaa',marginTop:3},
+ follow:{marginLeft:10,borderWidth:1,borderColor:'#fff',borderRadius:7,paddingHorizontal:10,paddingVertical:5},
+ followText:{color:'#fff',fontWeight:'800',fontSize:12},
+ captionText:{color:'#fff',fontSize:14,lineHeight:20,marginTop:9},
+ actions:{width:58,alignItems:'center',gap:18},
+ action:{alignItems:'center'},
+ actionLabel:{color:'#fff',fontSize:11,marginTop:3,fontWeight:'700'},
+ nav:{position:'absolute',bottom:0,left:0,right:0,zIndex:10,height:70,backgroundColor:'#0d0d13',borderTopWidth:1,borderTopColor:'#25252d',flexDirection:'row',justifyContent:'space-around',alignItems:'center'},
+ nitem:{alignItems:'center',gap:3,minWidth:55},
+ createBtn:{width:48,height:36,borderRadius:10,backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},
+ title:{color:'#fff',fontSize:28,fontWeight:'900',padding:20},
+ h1:{color:'#fff',fontSize:30,fontWeight:'900',marginTop:22},
+ h2:{color:'#fff',fontSize:20,fontWeight:'800',marginTop:8},
+ section:{color:'#fff',fontSize:18,fontWeight:'800',padding:20,paddingBottom:10},
+ input:{backgroundColor:'#181820',color:'#fff',marginHorizontal:20,marginTop:12,borderRadius:12,padding:14,fontSize:16,borderWidth:1,borderColor:'#292933'},
+ muted:{color:'#999',textAlign:'center',lineHeight:21,marginTop:8},
+ primary:{backgroundColor:'#ff2d55',padding:14,borderRadius:10,marginTop:18,minWidth:170,alignItems:'center'},
+ primaryText:{color:'#fff',fontWeight:'900'},
+ secondary:{borderWidth:1,borderColor:'#ff2d55',padding:13,borderRadius:10,marginTop:15,minWidth:160,alignItems:'center'},
+ secondaryText:{color:'#ff2d55',fontWeight:'900'},
+ row:{flexDirection:'row',alignItems:'center',padding:15,borderBottomWidth:1,borderBottomColor:'#1e1e26'},
+ createBox:{margin:20,padding:25,borderRadius:18,backgroundColor:'#15151d',alignItems:'center'},
+ liveCard:{margin:20,padding:30,backgroundColor:'#15151d',borderRadius:18,alignItems:'center'},
+ info:{margin:15,padding:20,borderRadius:15,backgroundColor:'#15151d'},
+ profile:{alignItems:'center'},
+ stats:{flexDirection:'row',marginTop:25},
+ login:{marginTop:110,alignItems:'center',padding:20},
+ tiny:{color:'#666',fontSize:11,textAlign:'center',margin:20},
+ modalShade:{flex:1,backgroundColor:'rgba(0,0,0,.65)',justifyContent:'flex-end'},
+ sheet:{backgroundColor:'#15151d',padding:24,borderTopLeftRadius:24,borderTopRightRadius:24},
+ giftGrid:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between',marginTop:18},
+ gift:{width:'48%',backgroundColor:'#20202a',borderRadius:15,padding:14,alignItems:'center',marginBottom:10},
+ giftEmoji:{fontSize:32},
+ close:{color:'#fff',textAlign:'center',fontWeight:'800',padding:12},
+ bubble:{maxWidth:'80%',padding:12,borderRadius:15,marginBottom:10},
+ mine:{alignSelf:'flex-end',backgroundColor:'#ff2d55'},
+ theirs:{alignSelf:'flex-start',backgroundColor:'#22222b'},
+ bubbleText:{color:'#fff',fontSize:15},
+ composer:{position:'absolute',bottom:0,left:0,right:0,padding:10,backgroundColor:'#111117',flexDirection:'row',alignItems:'center'},
+ send:{width:46,height:46,borderRadius:23,backgroundColor:'#ff2d55',alignItems:'center',justifyContent:'center',marginLeft:8},
+ admin:{margin:15,padding:15,borderRadius:12,backgroundColor:'#20202a',flexDirection:'row',alignItems:'center',gap:10},
+ adminText:{color:'#fff',fontWeight:'800'}
+});
+
+export default App;
