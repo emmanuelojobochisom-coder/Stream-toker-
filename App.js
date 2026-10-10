@@ -1,5 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import {
+<VideoView
+  player={player}
+  style={StyleSheet.absoluteFill}
+  contentFit="cover"
+  nativeControls={false}
+/>
   Alert,
   ActivityIndicator,
   SafeAreaView,
@@ -249,10 +253,12 @@ function Home({ navigation }) {
   const [liked, setLiked] = useState(false);
   const [following, setFollowing] = useState(false);
 
-  const player = useVideoPlayer(SAMPLE_VIDEO, (videoPlayer) => {
-    videoPlayer.loop = true;
-    videoPlayer.play();
-  });
+  <View
+  style={[
+    StyleSheet.absoluteFill,
+    { backgroundColor: '#15151f' },
+  ]}
+/>
 
   return (
     <SafeAreaView style={styles.screen}>
