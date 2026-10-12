@@ -1,6 +1,9 @@
 name: Build Stream Toker APK
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -9,7 +12,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,6 +20,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+
+      - name: Verify package files
+        run: |
+          test -f package.json
+          test -f package-lock.json
+          npm ci
 
       - name: Build APK with Expo
         env:
