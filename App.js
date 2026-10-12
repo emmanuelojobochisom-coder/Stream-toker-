@@ -1,247 +1,69 @@
 import React, { useEffect, useState } from 'react';
-
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-import {
-  NavigationContainer,
-} from '@react-navigation/native';
-
-import {
-  createNativeStackNavigator,
-} from '@react-navigation/native-stack';
-
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { supabase } from './lib/supabase';
 
 const Stack = createNativeStackNavigator();
-
-const COLORS = {
-  background: '#08080c',
-  card: '#17171f',
-  border: '#33333d',
-  pink: '#ff2d55',
-  white: '#ffffff',
-  muted: '#aaaaaa',
-  green: '#30d158',
-};
-
-// Convert common Nigerian phone-number formats to +234 format.
-function normalizePhoneNumber(value) {
-  const cleaned = value.replace(/[\s()-]/g, '');
-
-  if (cleaned.startsWith('+')) {
-    return cleaned;
-  }
-
-  if (cleaned.startsWith('234')) {
-    return `+${cleaned}`;
-  }
-
-  if (cleaned.startsWith('0')) {
-    return `+234${cleaned.slice(1)}`;
-  }
-
-  return `+234${cleaned}`;
-}
+const C = { bg: '#08080c', card: '#17171f', border: '#33333d', pink: '#ff2d55', white: '#fff', muted: '#aaa', green: '#30d158' };
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     let mounted = true;
-
-    async function loadSession() {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-
-        if (error) {
-          throw error;
-        }
-
-        if (mounted) {
-          setSession(data.session ?? null);
-        }
-      } catch (error) {
-        console.log('Session loading error:', error.message);
-
-        if (mounted) {
-          Alert.alert(
-            'Connection problem',
-            'Unable to load your session. Please check your internet connection.'
-          );
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (mounted) {
-        setSession(newSession);
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) console.log('Session error:', error.message);
+      if (mounted) { setSession(data?.session ?? null); setLoading(false); }
+    }).catch(error => { console.log('Session error:', error.message); if (mounted) setLoading(false); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => { if (mounted) setSession(nextSession); });
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <StatusBar barStyle="light-content" />
-        <ActivityIndicator size="large" color={COLORS.pink} />
-
-        <Text style={styles.muted}>
-          Loading Stream Toker...
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={COLORS.background}
-      />
-
-      {session ? (
-        <NavigationContainer>
-          <Stack.Navigator
-            initialRouteName="Home"
-            screenOptions={{
-              headerShown: false,
-              contentStyle: {
-                backgroundColor: COLORS.background,
-              },
-            }}
-          >
-            <Stack.Screen
-              name="Home"
-              component={HomeScreen}
-            />
-
-            <Stack.Screen
-              name="Discover"
-              component={DiscoverScreen}
-            />
-
-            <Stack.Screen
-              name="Profile"
-              component={ProfileScreen}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-      ) : (
-        <PhoneLoginScreen />
-      )}
-    </SafeAreaView>
-  );
+  if (loading) return <View style={s.center}><StatusBar barStyle="light-content" /><ActivityIndicator size="large" color={C.pink} /><Text style={s.muted}>Loading Stream Toker…</Text></View>;
+  return <SafeAreaView style={s.root}><StatusBar barStyle="light-content" backgroundColor={C.bg} />{session ? <NavigationContainer><Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}><Stack.Screen name="Home" component={HomeScreen} /><Stack.Screen name="Discover" component={DiscoverScreen} /><Stack.Screen name="Profile" component={ProfileScreen} /></Stack.Navigator></NavigationContainer> : <AuthScreen />}</SafeAreaView>;
 }
 
-// PHONE LOGIN AND SMS VERIFICATION
-
-function PhoneLoginScreen() {
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [verificationSent, setVerificationSent] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  async function sendCode() {
-    const digits = phone.replace(/\D/g, '');
-
-    if (digits.length < 10) {
-      Alert.alert(
-        'Check your number',
-        'Please enter a valid phone number.'
-      );
-      return;
-    }
-
-    const formattedPhone = normalizePhoneNumber(phone);
-
+function AuthScreen() {
+  const [mode, setMode] = useState('login'); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [username, setUsername] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit() {
+    if (!email.trim() || !password) return Alert.alert('Missing details', 'Enter your email and password.');
+    if (mode === 'signup' && !username.trim()) return Alert.alert('Choose a username', 'Enter a username to create your profile.');
     setBusy(true);
-
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: formattedPhone,
-      });
-
-      if (error) {
-        throw error;
+      if (mode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+        if (error) throw error;
+        if (data.user) {
+          const { error: profileError } = await supabase.from('profiles').upsert({ id: data.user.id, username: username.trim(), display_name: username.trim() }, { onConflict: 'id' });
+          if (profileError) console.log('Profile save error:', profileError.message);
+        }
+        Alert.alert('Account created', data.session ? 'Welcome to Stream Toker!' : 'Check your email to confirm your account, then log in.');
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw error;
       }
-
-      setPhone(formattedPhone);
-      setVerificationSent(true);
-
-      Alert.alert(
-        'Verification code sent',
-        'Enter the SMS code sent to your phone.'
-      );
-    } catch (error) {
-      Alert.alert(
-        'Unable to send code',
-        error.message ||
-          'Please check your phone number and try again.'
-      );
-    } finally {
-      setBusy(false);
-    }
+    } catch (error) { Alert.alert(mode === 'signup' ? 'Sign-up failed' : 'Login failed', error.message || 'Please try again.'); }
+    finally { setBusy(false); }
   }
+  return <KeyboardAvoidingView style={s.authWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><ScrollView contentContainerStyle={s.authContent} keyboardShouldPersistTaps="handled"><Text style={s.logo}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><Text style={s.subtitle}>Short videos. Real connections.</Text><View style={s.card}><Text style={s.heading}>{mode === 'login' ? 'Welcome back' : 'Create your account'}</Text>{mode === 'signup' && <TextInput value={username} onChangeText={setUsername} placeholder="Username" placeholderTextColor={C.muted} autoCapitalize="none" style={s.input} />}<TextInput value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor={C.muted} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} style={s.input} /><TextInput value={password} onChangeText={setPassword} placeholder="Password (at least 6 characters)" placeholderTextColor={C.muted} secureTextEntry style={s.input} /><TouchableOpacity style={s.primary} onPress={submit} disabled={busy}><Text style={s.primaryText}>{busy ? 'Please wait…' : mode === 'login' ? 'Log In' : 'Create Account'}</Text></TouchableOpacity><TouchableOpacity onPress={() => setMode(mode === 'login' ? 'signup' : 'login')} style={s.switch}><Text style={s.muted}>{mode === 'login' ? 'New to Stream Toker? ' : 'Already have an account? '}<Text style={{ color: C.pink }}>{mode === 'login' ? 'Create account' : 'Log in'}</Text></Text></TouchableOpacity></View></ScrollView></KeyboardAvoidingView>;
+}
 
-  async function verifyCode() {
-    if (!otp.trim()) {
-      Alert.alert(
-        'Missing code',
-        'Enter the SMS verification code.'
-      );
-      return;
-    }
+function HomeScreen({ navigation }) {
+  const [liked, setLiked] = useState(false);
+  return <View style={s.screen}><View style={s.top}><Text style={s.logoSmall}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><TouchableOpacity onPress={() => navigation.navigate('Discover')}><Ionicons name="search-outline" size={25} color={C.white} /></TouchableOpacity></View><View style={s.video}><Ionicons name="play-circle-outline" size={64} color={C.white} /><Text style={s.videoTitle}>Your video feed starts here</Text><Text style={s.muted}>Connect your account and start sharing videos.</Text><Text style={s.demoNote}>Sample video feed is not connected yet.</Text></View><View style={s.actions}><TouchableOpacity style={s.action} onPress={() => setLiked(!liked)}><Ionicons name={liked ? 'heart' : 'heart-outline'} size={27} color={liked ? C.pink : C.white} /><Text style={s.muted}>{liked ? 'Liked' : 'Like'}</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={() => Alert.alert('Comments', 'Comments will be available when video comments are connected to the database.')}><Ionicons name="chatbubble-outline" size={27} color={C.white} /><Text style={s.muted}>Comment</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={() => Alert.alert('Share', 'Video sharing will be available when published videos are connected.')}><Ionicons name="paper-plane-outline" size={27} color={C.white} /><Text style={s.muted}>Share</Text></TouchableOpacity></View><BottomNav navigation={navigation} current="Home" /></View>;
+}
+function DiscoverScreen({ navigation }) {
+  const [query, setQuery] = useState(''); const [profiles, setProfiles] = useState([]); const [busy, setBusy] = useState(false);
+  async function search() { if (!query.trim()) return; setBusy(true); try { const { data, error } = await supabase.from('profiles').select('id, username, display_name').ilike('username', `%${query.trim()}%`).limit(25); if (error) throw error; setProfiles(data || []); } catch (error) { Alert.alert('Search unavailable', error.message || 'Could not search profiles.'); } finally { setBusy(false); } }
+  return <View style={s.screen}><View style={s.top}><Text style={s.heading}>Discover</Text><TouchableOpacity onPress={() => navigation.navigate('Profile')}><Ionicons name="person-circle-outline" size={27} color={C.white} /></TouchableOpacity></View><View style={s.searchRow}><TextInput value={query} onChangeText={setQuery} placeholder="Search usernames" placeholderTextColor={C.muted} autoCapitalize="none" style={[s.input, { flex: 1, marginBottom: 0 }]} /><TouchableOpacity style={s.searchButton} onPress={search}><Text style={s.primaryText}>{busy ? '…' : 'Search'}</Text></TouchableOpacity></View><ScrollView contentContainerStyle={{ padding: 16 }}>{profiles.length ? profiles.map(p => <View key={p.id} style={s.profileRow}><Ionicons name="person-circle" size={36} color={C.pink} /><View><Text style={s.bodyText}>{p.display_name || p.username}</Text><Text style={s.muted}>@{p.username}</Text></View></View>) : <Text style={s.muted}>Search for creators by username.</Text>}</ScrollView><BottomNav navigation={navigation} current="Discover" /></View>;
+}
+function ProfileScreen({ navigation }) {
+  const [profile, setProfile] = useState(null); const [busy, setBusy] = useState(false); const user = supabase.auth.getSession;
+  useEffect(() => { let active = true; (async () => { const { data: { session } } = await supabase.auth.getSession(); if (!session?.user || !active) return; const { data } = await supabase.from('profiles').select('username, display_name').eq('id', session.user.id).maybeSingle(); if (active) setProfile({ ...data, email: session.user.email, phone: session.user.phone }); })(); return () => { active = false; }; }, []);
+  async function signOut() { setBusy(true); const { error } = await supabase.auth.signOut(); setBusy(false); if (error) Alert.alert('Sign out failed', error.message); }
+  return <View style={s.screen}><View style={s.top}><Text style={s.heading}>Profile</Text></View><View style={s.profileCard}><Ionicons name="person-circle-outline" size={82} color={C.pink} /><Text style={s.heading}>{profile?.display_name || profile?.username || 'Your profile'}</Text>{profile?.username ? <Text style={s.muted}>@{profile.username}</Text> : null}<Text style={s.bodyText}>{profile?.email || profile?.phone || ''}</Text><Text style={s.muted}>Creator profile</Text><TouchableOpacity style={s.primary} onPress={signOut} disabled={busy}><Text style={s.primaryText}>{busy ? 'Signing out…' : 'Sign Out'}</Text></TouchableOpacity></View><BottomNav navigation={navigation} current="Profile" /></View>;
+}
+function BottomNav({ navigation, current }) { return <View style={s.nav}>{[['Home','home-outline'],['Discover','compass-outline'],['Profile','person-outline']].map(([name, icon]) => <TouchableOpacity key={name} style={s.navItem} onPress={() => navigation.navigate(name)}><Ionicons name={icon} size={23} color={current === name ? C.pink : C.muted} /><Text style={{ color: current === name ? C.pink : C.muted, fontSize: 12 }}>{name}</Text></TouchableOpacity>)}</View>; }
 
-    setBusy(true);
-
-    try {
-      const formattedPhone = normalizePhoneNumber(phone);
-
-      const { error } = await supabase.auth.verifyOtp({
-        phone: formattedPhone,
-        token: otp.trim(),
-        type: 'sms',
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      // The authenticated session will open the app.
-    } catch (error) {
-      Alert.alert(
-        'Verification failed',
-        error.message ||
-          'The code could not be verified. Please try again.'
-      );
-    } finally {
-      setBusy(false);
+const s = StyleSheet.create({ root: { flex: 1, backgroundColor: C.bg }, screen: { flex: 1, backgroundColor: C.bg }, center: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 12 }, authWrap: { flex: 1, backgroundColor: C.bg }, authContent: { flexGrow: 1, justifyContent: 'center', padding: 22 }, logo: { color: C.white, fontSize: 30, fontWeight: '900', textAlign: 'center', letterSpacing: 1 }, logoSmall: { color: C.white, fontSize: 20, fontWeight: '900' }, subtitle: { color: C.muted, textAlign: 'center', marginTop: 8, marginBottom: 28 }, card: { backgroundColor: C.card, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: C.border }, heading: { color: C.white, fontSize: 23, fontWeight: '800', marginBottom: 16 }, input: { color: C.white, backgroundColor: '#101016', borderColor: C.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 12, fontSize: 15 }, primary: { backgroundColor: C.pink, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 }, primaryText: { color: C.white, fontWeight: '800', fontSize: 15 }, switch: { alignItems: 'center', paddingTop: 20 }, muted: { color: C.muted, fontSize: 13 }, bodyText: { color: C.white, fontSize: 15, marginTop: 5 }, top: { paddingHorizontal: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomColor: C.border, borderBottomWidth: 1 }, video: { flex: 1, margin: 16, borderRadius: 18, backgroundColor: '#20202a', alignItems: 'center', justifyContent: 'center', padding: 24 }, videoTitle: { color: C.white, fontWeight: '800', fontSize: 20, marginTop: 14, marginBottom: 8, textAlign: 'center' }, demoNote: { color: C.muted, fontSize: 12, marginTop: 20, textAlign: 'center' }, actions: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 12 }, action: { alignItems: 'center', gap: 4 }, nav: { flexDirection: 'row', justifyContent: 'space-around', borderTopColor: C.border, borderTopWidth: 1, paddingTop: 10, paddingBottom: 8 }, navItem: { alignItems: 'center', gap: 4, minWidth: 70 }, searchRow: { flexDirection: 'row', padding: 14, gap: 8 }, searchButton: { backgroundColor: C.pink, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' }, profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border }, profileCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 } });
