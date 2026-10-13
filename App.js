@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +56,10 @@ function HomeScreen({ navigation }) {
   const [busy, setBusy] = useState(false);
   const [caption, setCaption] = useState('');
   const [userId, setUserId] = useState(null);
+  const [commentVideo, setCommentVideo] = useState(null);
+  const [commentText, setCommentText] = useState('');
+  const [comments, setComments] = useState([]);
+  const [commentsBusy, setCommentsBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -135,7 +139,35 @@ function HomeScreen({ navigation }) {
 
   async function addComment(videoId) {
     if (!userId) return Alert.alert('Log in required', 'Log in to comment.');
-    Alert.alert('Comments', 'The comments table is connected. The comment composer will be added next.');
+    setCommentVideo(videoId);
+    setCommentText('');
+    setComments([]);
+    setCommentsBusy(true);
+    try {
+      const { data, error } = await supabase.from('stream_video_comments')
+        .select('id, user_id, comment_text, created_at')
+        .eq('video_id', videoId).order('created_at', { ascending: true }).limit(100);
+      if (error) throw error;
+      setComments(data || []);
+    } catch (error) {
+      Alert.alert('Comments unavailable', error.message || 'Could not load comments.');
+    } finally { setCommentsBusy(false); }
+  }
+
+  async function sendComment() {
+    const text = commentText.trim();
+    if (!text || !commentVideo) return;
+    setCommentsBusy(true);
+    try {
+      const { data, error } = await supabase.from('stream_video_comments')
+        .insert({ video_id: commentVideo, user_id: userId, comment_text: text })
+        .select('id, user_id, comment_text, created_at').single();
+      if (error) throw error;
+      setComments(current => [...current, data]);
+      setCommentText('');
+    } catch (error) {
+      Alert.alert('Comment failed', error.message || 'Please try again.');
+    } finally { setCommentsBusy(false); }
   }
 
   return <View style={s.screen}>
@@ -149,6 +181,19 @@ function HomeScreen({ navigation }) {
       renderItem={({ item }) => <VideoPost item={item} onLike={() => toggleLike(item.id)} onComment={() => addComment(item.id)} />}
       contentContainerStyle={{ paddingBottom: 12 }} />
     <BottomNav navigation={navigation} current="Home" />
+    <Modal visible={!!commentVideo} animationType="slide" transparent onRequestClose={() => setCommentVideo(null)}>
+      <View style={s.modalShade}>
+        <View style={s.commentSheet}>
+          <View style={s.commentHeader}><Text style={s.heading}>Comments</Text><TouchableOpacity onPress={() => setCommentVideo(null)}><Ionicons name="close" size={27} color={C.white} /></TouchableOpacity></View>
+          {commentsBusy && comments.length === 0 ? <ActivityIndicator color={C.pink} /> : null}
+          <ScrollView style={s.commentList} contentContainerStyle={{ paddingBottom: 12 }}>
+            {comments.map(comment => <View key={comment.id} style={s.commentRow}><Text style={s.commentUser}>Creator</Text><Text style={s.bodyText}>{comment.comment_text}</Text></View>)}
+            {!commentsBusy && comments.length === 0 ? <Text style={s.muted}>No comments yet. Start the conversation.</Text> : null}
+          </ScrollView>
+          <View style={s.commentComposer}><TextInput value={commentText} onChangeText={setCommentText} placeholder="Write a comment…" placeholderTextColor={C.muted} style={[s.input, { flex: 1, marginBottom: 0 }]} maxLength={1000} multiline /><TouchableOpacity style={s.sendButton} onPress={sendComment} disabled={commentsBusy || !commentText.trim()}><Ionicons name="send" size={22} color={C.white} /></TouchableOpacity></View>
+        </View>
+      </View>
+    </Modal>
   </View>;
 }
 
@@ -178,4 +223,4 @@ function ProfileScreen({ navigation }) {
 }
 function BottomNav({ navigation, current }) { return <View style={s.nav}>{[['Home','home-outline'],['Discover','compass-outline'],['Profile','person-outline']].map(([name, icon]) => <TouchableOpacity key={name} style={s.navItem} onPress={() => navigation.navigate(name)}><Ionicons name={icon} size={23} color={current === name ? C.pink : C.muted} /><Text style={{ color: current === name ? C.pink : C.muted, fontSize: 12 }}>{name}</Text></TouchableOpacity>)}</View>; }
 
-const s = StyleSheet.create({ uploadBox: { padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }, postCard: { margin: 14, padding: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border }, realVideo: { width: '100%', height: 360, backgroundColor: '#000', borderRadius: 10 }, videoUnavailable: { height: 220, backgroundColor: '#101016', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 10 }, postActions: { flexDirection: 'row', gap: 28, paddingTop: 12 }, emptyFeed: { alignItems: 'center', justifyContent: 'center', padding: 35, gap: 12 }, root: { flex: 1, backgroundColor: C.bg }, screen: { flex: 1, backgroundColor: C.bg }, center: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 12 }, authWrap: { flex: 1, backgroundColor: C.bg }, authContent: { flexGrow: 1, justifyContent: 'center', padding: 22 }, logo: { color: C.white, fontSize: 30, fontWeight: '900', textAlign: 'center', letterSpacing: 1 }, logoSmall: { color: C.white, fontSize: 20, fontWeight: '900' }, subtitle: { color: C.muted, textAlign: 'center', marginTop: 8, marginBottom: 28 }, card: { backgroundColor: C.card, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: C.border }, heading: { color: C.white, fontSize: 23, fontWeight: '800', marginBottom: 16 }, input: { color: C.white, backgroundColor: '#101016', borderColor: C.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 12, fontSize: 15 }, passwordRow: { position: 'relative', justifyContent: 'center' }, passwordInput: { paddingRight: 48 }, eyeButton: { position: 'absolute', right: 14, top: 0, bottom: 12, justifyContent: 'center', alignItems: 'center' }, primary: { backgroundColor: C.pink, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 }, primaryText: { color: C.white, fontWeight: '800', fontSize: 15 }, switch: { alignItems: 'center', paddingTop: 20 }, muted: { color: C.muted, fontSize: 13 }, bodyText: { color: C.white, fontSize: 15, marginTop: 5 }, top: { paddingHorizontal: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomColor: C.border, borderBottomWidth: 1 }, video: { flex: 1, margin: 16, borderRadius: 18, backgroundColor: '#20202a', alignItems: 'center', justifyContent: 'center', padding: 24 }, videoTitle: { color: C.white, fontWeight: '800', fontSize: 20, marginTop: 14, marginBottom: 8, textAlign: 'center' }, demoNote: { color: C.muted, fontSize: 12, marginTop: 20, textAlign: 'center' }, actions: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 12 }, action: { alignItems: 'center', gap: 4 }, nav: { flexDirection: 'row', justifyContent: 'space-around', borderTopColor: C.border, borderTopWidth: 1, paddingTop: 10, paddingBottom: 8 }, navItem: { alignItems: 'center', gap: 4, minWidth: 70 }, searchRow: { flexDirection: 'row', padding: 14, gap: 8 }, searchButton: { backgroundColor: C.pink, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' }, profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border }, profileCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 } });
+const s = StyleSheet.create({ modalShade: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }, commentSheet: { height: '75%', backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16 }, commentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, commentList: { flex: 1, marginVertical: 10 }, commentRow: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border }, commentUser: { color: C.pink, fontWeight: '700', fontSize: 12 }, commentComposer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border }, sendButton: { backgroundColor: C.pink, width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, uploadBox: { padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }, postCard: { margin: 14, padding: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border }, realVideo: { width: '100%', height: 360, backgroundColor: '#000', borderRadius: 10 }, videoUnavailable: { height: 220, backgroundColor: '#101016', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 10 }, postActions: { flexDirection: 'row', gap: 28, paddingTop: 12 }, emptyFeed: { alignItems: 'center', justifyContent: 'center', padding: 35, gap: 12 }, root: { flex: 1, backgroundColor: C.bg }, screen: { flex: 1, backgroundColor: C.bg }, center: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 12 }, authWrap: { flex: 1, backgroundColor: C.bg }, authContent: { flexGrow: 1, justifyContent: 'center', padding: 22 }, logo: { color: C.white, fontSize: 30, fontWeight: '900', textAlign: 'center', letterSpacing: 1 }, logoSmall: { color: C.white, fontSize: 20, fontWeight: '900' }, subtitle: { color: C.muted, textAlign: 'center', marginTop: 8, marginBottom: 28 }, card: { backgroundColor: C.card, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: C.border }, heading: { color: C.white, fontSize: 23, fontWeight: '800', marginBottom: 16 }, input: { color: C.white, backgroundColor: '#101016', borderColor: C.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 12, fontSize: 15 }, passwordRow: { position: 'relative', justifyContent: 'center' }, passwordInput: { paddingRight: 48 }, eyeButton: { position: 'absolute', right: 14, top: 0, bottom: 12, justifyContent: 'center', alignItems: 'center' }, primary: { backgroundColor: C.pink, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 }, primaryText: { color: C.white, fontWeight: '800', fontSize: 15 }, switch: { alignItems: 'center', paddingTop: 20 }, muted: { color: C.muted, fontSize: 13 }, bodyText: { color: C.white, fontSize: 15, marginTop: 5 }, top: { paddingHorizontal: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomColor: C.border, borderBottomWidth: 1 }, video: { flex: 1, margin: 16, borderRadius: 18, backgroundColor: '#20202a', alignItems: 'center', justifyContent: 'center', padding: 24 }, videoTitle: { color: C.white, fontWeight: '800', fontSize: 20, marginTop: 14, marginBottom: 8, textAlign: 'center' }, demoNote: { color: C.muted, fontSize: 12, marginTop: 20, textAlign: 'center' }, actions: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 12 }, action: { alignItems: 'center', gap: 4 }, nav: { flexDirection: 'row', justifyContent: 'space-around', borderTopColor: C.border, borderTopWidth: 1, paddingTop: 10, paddingBottom: 8 }, navItem: { alignItems: 'center', gap: 4, minWidth: 70 }, searchRow: { flexDirection: 'row', padding: 14, gap: 8 }, searchButton: { backgroundColor: C.pink, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' }, profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border }, profileCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 } });
