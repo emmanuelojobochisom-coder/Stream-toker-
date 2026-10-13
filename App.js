@@ -152,10 +152,14 @@ function HomeScreen({ navigation }) {
     setCommentsBusy(true);
     try {
       const { data, error } = await supabase.from('stream_video_comments')
-        .select('id, user_id, comment_text, created_at, profiles(username)')
+        .select('id, user_id, comment_text, created_at')
         .eq('video_id', videoId).order('created_at', { ascending: true }).limit(100);
       if (error) throw error;
-      setComments((data || []).map(comment => ({ ...comment, username: comment.profiles?.username || null })));
+      const rows = data || [];
+      const ids = [...new Set(rows.map(comment => comment.user_id))];
+      const { data: authors } = ids.length ? await supabase.from('profiles').select('id, username').in('id', ids) : { data: [] };
+      const names = new Map((authors || []).map(author => [author.id, author.username]));
+      setComments(rows.map(comment => ({ ...comment, username: names.get(comment.user_id) || null })));
     } catch (error) {
       Alert.alert('Comments unavailable', error.message || 'Could not load comments.');
     } finally { setCommentsBusy(false); }
@@ -168,9 +172,10 @@ function HomeScreen({ navigation }) {
     try {
       const { data, error } = await supabase.from('stream_video_comments')
         .insert({ video_id: commentVideo, user_id: userId, comment_text: text })
-        .select('id, user_id, comment_text, created_at, profiles(username)').single();
+        .select('id, user_id, comment_text, created_at').single();
       if (error) throw error;
-      setComments(current => [...current, { ...data, username: data.profiles?.username || null }]);
+      const { data: author } = await supabase.from('profiles').select('username').eq('id', data.user_id).maybeSingle();
+      setComments(current => [...current, { ...data, username: author?.username || null }]);
       setCommentText('');
     } catch (error) {
       Alert.alert('Comment failed', error.message || 'Please try again.');
