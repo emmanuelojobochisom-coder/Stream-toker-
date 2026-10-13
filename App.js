@@ -164,7 +164,7 @@ function VideoPost({ item, onLike, onComment }) {
     <Text style={s.bodyText}>{item.caption || 'A new Stream Toker video'}</Text>
     <Text style={s.muted}>Creator · {new Date(item.created_at).toLocaleDateString()}</Text>
     <View style={s.postActions}>
-      <TouchableOpacity style={s.action} onPress={onLike}><Ionicons name="heart-outline" size={25} color={C.pink} /><Text style={s.muted}>Like</Text></TouchableOpacity>
+      <TouchableOpacity style={s.action} onPress={onLike}><Ionicons name={item.likedByMe ? 'heart' : 'heart-outline'} size={25} color={C.pink} /><Text style={s.muted}>{item.likeCount || 0} · {item.likedByMe ? 'Liked' : 'Like'}</Text></TouchableOpacity>
       <TouchableOpacity style={s.action} onPress={onComment}><Ionicons name="chatbubble-outline" size={25} color={C.white} /><Text style={s.muted}>Comment</Text></TouchableOpacity>
     </View>
   </View>;
