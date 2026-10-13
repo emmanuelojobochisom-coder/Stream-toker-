@@ -28,7 +28,7 @@ jobs:
           test -f package-lock.json
           npm ci
 
-      - name: Build APK with Expo
+      - name: Build fresh APK with Expo
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx --yes eas-cli@latest build --platform android --profile preview --non-interactive
+        run: npx --yes eas-cli@latest build --platform android --profile preview --non-interactive --clear-cache
