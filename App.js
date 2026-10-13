@@ -77,7 +77,9 @@ function HomeScreen({ navigation }) {
       if (error) throw error;
       const withUrls = await Promise.all((data || []).map(async video => {
         const { data: urlData } = await supabase.storage.from('stream-toker-videos').createSignedUrl(video.storage_path, 3600);
-        return { ...video, playbackUrl: urlData?.signedUrl || null };
+        const { data: likesData, error: likesError } = await supabase.from('stream_video_likes').select('user_id').eq('video_id', video.id);
+        if (likesError) throw likesError;
+        return { ...video, playbackUrl: urlData?.signedUrl || null, likeCount: likesData?.length || 0, likedByMe: !!userId && (likesData || []).some(like => like.user_id === userId) };
       }));
       setVideos(withUrls);
     } catch (error) {
