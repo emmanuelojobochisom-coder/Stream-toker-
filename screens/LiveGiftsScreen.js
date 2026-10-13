@@ -9,6 +9,7 @@ export default function LiveGiftsScreen({ navigation }) {
   const [wallet, setWallet] = useState(0);
   const [catalog, setCatalog] = useState([]);
   const [lives, setLives] = useState([]);
+  const [scheduled, setScheduled] = useState([]);
   const [selectedGift, setSelectedGift] = useState(null);
   const [title, setTitle] = useState("My Stream Toker Live");
   const [busy, setBusy] = useState(false);
@@ -23,12 +24,14 @@ export default function LiveGiftsScreen({ navigation }) {
       const results = await Promise.all([
         supabase.from("creator_coin_wallets").select("balance").eq("user_id", auth.user.id).maybeSingle(),
         supabase.from("gift_catalog").select("id,gift_name,gift_emoji,coin_value").eq("active", true).order("coin_value"),
-        supabase.from("livestreams").select("id,host_id,title,status,viewer_count").eq("status", "live").order("created_at", { ascending: false }).limit(30)
+        supabase.from("livestreams").select("id,host_id,title,status,viewer_count").eq("status", "live").order("created_at", { ascending: false }).limit(30),
+        supabase.from("livestreams").select("id,host_id,title,status,created_at").eq("host_id", auth.user.id).eq("status", "scheduled").order("created_at", { ascending: false }).limit(20)
       ]);
       for (const result of results) if (result.error) throw result.error;
       setWallet(results[0].data?.balance || 0);
       setCatalog(results[1].data || []);
       setLives(results[2].data || []);
+      setScheduled(results[3].data || []);
       if (!selectedGift && results[1].data?.length) setSelectedGift(results[1].data[0].id);
     } catch (e) { Alert.alert("Live and gifts", e.message || "Could not load data."); }
     finally { setBusy(false); }
@@ -44,11 +47,11 @@ export default function LiveGiftsScreen({ navigation }) {
     } catch (e) { Alert.alert("Could not create room", e.message || "Try again."); }
     finally { setBusy(false); }
   }
-  async function markLive() {
+  async function markLive(roomId) {
     if (!userId) return;
     setBusy(true);
     try {
-      const { error } = await supabase.from("livestreams").update({ status: "live", started_at: new Date().toISOString(), host_started_at: new Date().toISOString() }).eq("host_id", userId).eq("status", "scheduled");
+      const { error } = await supabase.from("livestreams").update({ status: "live", started_at: new Date().toISOString(), host_started_at: new Date().toISOString() }).eq("id", roomId).eq("host_id", userId).eq("status", "scheduled");
       if (error) throw error;
       Alert.alert("Room status updated", "The room is marked live, but it is not broadcasting video yet.");
       await load();
@@ -79,9 +82,9 @@ export default function LiveGiftsScreen({ navigation }) {
     <View style={s.top}><TouchableOpacity onPress={() => navigation.navigate("Home")}><Ionicons name="arrow-back" size={24} color={C.white} /></TouchableOpacity><Text style={s.heading}>Live and Gifts</Text><TouchableOpacity onPress={load}><Ionicons name="refresh" size={22} color={C.white} /></TouchableOpacity></View>
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
       <View style={s.card}><Text style={s.heading}>Coin wallet</Text><Text style={s.balance}>🪙 {wallet} coins</Text><Text style={s.muted}>Coin purchases are disabled until a verified payment provider is connected.</Text></View>
-      <View style={[s.card, { marginTop: 14 }]}><Text style={s.heading}>Start a room</Text><TextInput value={title} onChangeText={setTitle} placeholder="Live title" placeholderTextColor={C.muted} style={s.input} maxLength={100} /><TouchableOpacity style={s.button} onPress={createRoom} disabled={busy}><Text style={s.buttonText}>Create room</Text></TouchableOpacity><TouchableOpacity style={s.button} onPress={markLive} disabled={busy}><Text style={s.buttonText}>Mark my scheduled room live</Text></TouchableOpacity><Text style={s.muted}>Live room records work; real camera and audio broadcasting are not connected yet.</Text></View>
+      <View style={[s.card, { marginTop: 14 }]}><Text style={s.heading}>Start a room</Text><TextInput value={title} onChangeText={setTitle} placeholder="Live title" placeholderTextColor={C.muted} style={s.input} maxLength={100} /><TouchableOpacity style={s.button} onPress={createRoom} disabled={busy}><Text style={s.buttonText}>Create room</Text></TouchableOpacity><TouchableOpacity style={s.button} onPress={() => { if (scheduled.length === 1) markLive(scheduled[0].id); else Alert.alert("Choose a room", "Use the Go Live button beside the room you want to start."); }} disabled={busy || scheduled.length !== 1}><Text style={s.buttonText}>Start only scheduled room</Text></TouchableOpacity><Text style={s.muted}>Live room records work; real camera and audio broadcasting are not connected yet.</Text></View>
       <Text style={s.heading}>Gift catalogue</Text><View style={s.grid}>{catalog.map(g => <TouchableOpacity key={g.id} onPress={() => setSelectedGift(g.id)} style={[s.gift, selectedGift === g.id && s.selected]}><Text style={{ fontSize: 28 }}>{g.gift_emoji || "🎁"}</Text><Text style={s.text}>{g.gift_name}</Text><Text style={s.muted}>{g.coin_value} coins</Text></TouchableOpacity>)}</View>
-      <Text style={s.heading}>Live rooms</Text>{lives.length ? lives.map(live => <View key={live.id} style={s.row}><View style={{ flex: 1 }}><Text style={s.text}>{live.title}</Text><Text style={s.muted}>{live.viewer_count || 0} viewers</Text></View>{live.host_id === userId ? <TouchableOpacity style={s.smallButton} onPress={() => endRoom(live.id)} disabled={busy}><Text style={s.buttonText}>End</Text></TouchableOpacity> : <TouchableOpacity style={s.smallButton} onPress={() => sendGift(live.host_id, live.id)} disabled={busy || wallet < (catalog.find(g => g.id === selectedGift)?.coin_value || 1)}><Text style={s.buttonText}>Gift</Text></TouchableOpacity>}</View>) : <Text style={s.muted}>No live rooms at the moment.</Text>}
+      <Text style={s.heading}>My scheduled rooms</Text>{scheduled.length ? scheduled.map(room => <View key={room.id} style={s.row}><View style={{ flex: 1 }}><Text style={s.text}>{room.title}</Text><Text style={s.muted}>Not live yet</Text></View><TouchableOpacity style={s.smallButton} onPress={() => markLive(room.id)} disabled={busy}><Text style={s.buttonText}>Go Live</Text></TouchableOpacity></View>) : <Text style={s.muted}>No scheduled rooms.</Text>}<Text style={s.heading}>Live rooms</Text>{lives.length ? lives.map(live => <View key={live.id} style={s.row}><View style={{ flex: 1 }}><Text style={s.text}>{live.title}</Text><Text style={s.muted}>{live.viewer_count || 0} viewers</Text></View>{live.host_id === userId ? <TouchableOpacity style={s.smallButton} onPress={() => endRoom(live.id)} disabled={busy}><Text style={s.buttonText}>End</Text></TouchableOpacity> : <TouchableOpacity style={s.smallButton} onPress={() => sendGift(live.host_id, live.id)} disabled={busy || wallet < (catalog.find(g => g.id === selectedGift)?.coin_value || 1)}><Text style={s.buttonText}>Gift</Text></TouchableOpacity>}</View>) : <Text style={s.muted}>No live rooms at the moment.</Text>
     </ScrollView>
   </View>;
 }
