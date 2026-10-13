@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +56,10 @@ function HomeScreen({ navigation }) {
   const [busy, setBusy] = useState(false);
   const [caption, setCaption] = useState('');
   const [userId, setUserId] = useState(null);
+  const [commentVideo, setCommentVideo] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentBusy, setCommentBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -73,7 +77,9 @@ function HomeScreen({ navigation }) {
       if (error) throw error;
       const withUrls = await Promise.all((data || []).map(async video => {
         const { data: urlData } = await supabase.storage.from('stream-toker-videos').createSignedUrl(video.storage_path, 3600);
-        return { ...video, playbackUrl: urlData?.signedUrl || null };
+        const { data: likesData, error: likesError } = await supabase.from('stream_video_likes').select('user_id').eq('video_id', video.id);
+        if (likesError) throw likesError;
+        return { ...video, playbackUrl: urlData?.signedUrl || null, likeCount: likesData?.length || 0, likedByMe: !!userId && (likesData || []).some(like => like.user_id === userId) };
       }));
       setVideos(withUrls);
     } catch (error) {
@@ -127,7 +133,7 @@ function HomeScreen({ navigation }) {
         const { error } = await supabase.from('stream_video_likes').insert({ video_id: videoId, user_id: userId });
         if (error) throw error;
       }
-      Alert.alert('Like updated', existing ? 'You removed your like.' : 'You liked this video.');
+      setVideos(current => current.map(video => video.id === videoId ? { ...video, likedByMe: !existing, likeCount: Math.max(0, (video.likeCount || 0) + (existing ? -1 : 1)) } : video));
     } catch (error) { Alert.alert('Like failed', error.message || 'Please try again.'); }
   }
 
@@ -158,7 +164,7 @@ function VideoPost({ item, onLike, onComment }) {
     <Text style={s.bodyText}>{item.caption || 'A new Stream Toker video'}</Text>
     <Text style={s.muted}>Creator · {new Date(item.created_at).toLocaleDateString()}</Text>
     <View style={s.postActions}>
-      <TouchableOpacity style={s.action} onPress={onLike}><Ionicons name="heart-outline" size={25} color={C.pink} /><Text style={s.muted}>Like</Text></TouchableOpacity>
+      <TouchableOpacity style={s.action} onPress={onLike}><Ionicons name={item.likedByMe ? 'heart' : 'heart-outline'} size={25} color={C.pink} /><Text style={s.muted}>{item.likeCount || 0} · {item.likedByMe ? 'Liked' : 'Like'}</Text></TouchableOpacity>
       <TouchableOpacity style={s.action} onPress={onComment}><Ionicons name="chatbubble-outline" size={25} color={C.white} /><Text style={s.muted}>Comment</Text></TouchableOpacity>
     </View>
   </View>;
