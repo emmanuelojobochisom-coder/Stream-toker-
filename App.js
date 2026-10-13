@@ -1,3 +1,4 @@
+import LiveGiftsScreen from "./screens/LiveGiftsScreen";
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,7 +24,7 @@ export default function App() {
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
   if (loading) return <View style={s.center}><StatusBar barStyle="light-content" /><ActivityIndicator size="large" color={C.pink} /><Text style={s.muted}>Loading Stream Toker…</Text></View>;
-  return <SafeAreaView style={s.root}><StatusBar barStyle="light-content" backgroundColor={C.bg} />{session ? <NavigationContainer><Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}><Stack.Screen name="Home" component={HomeScreen} /><Stack.Screen name="Discover" component={DiscoverScreen} /><Stack.Screen name="Messages" component={MessagesScreen} /><Stack.Screen name="Profile" component={ProfileScreen} /></Stack.Navigator></NavigationContainer> : <AuthScreen />}</SafeAreaView>;
+  return <SafeAreaView style={s.root}><StatusBar barStyle="light-content" backgroundColor={C.bg} />{session ? <NavigationContainer><Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}><Stack.Screen name="Home" component={HomeScreen} /><Stack.Screen name="Discover" component={DiscoverScreen} /><Stack.Screen name="Messages" component={MessagesScreen} /><Stack.Screen name="LiveGifts" component={LiveGiftsScreen} /><Stack.Screen name="Profile" component={ProfileScreen} /></Stack.Navigator></NavigationContainer> : <AuthScreen />}</SafeAreaView>;
 }
 
 function AuthScreen() {
@@ -183,7 +184,7 @@ function HomeScreen({ navigation }) {
   }
 
   return <View style={s.screen}>
-    <View style={s.top}><Text style={s.logoSmall}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><View style={{ flexDirection: 'row', gap: 18 }}><TouchableOpacity onPress={() => navigation.navigate('Messages')}><Ionicons name="chatbubbles-outline" size={25} color={C.white} /></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Discover')}><Ionicons name="search-outline" size={25} color={C.white} /></TouchableOpacity></View></View>
+    <View style={s.top}><Text style={s.logoSmall}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><View style={{ flexDirection: 'row', gap: 18 }}><TouchableOpacity onPress={() => navigation.navigate("LiveGifts")}><Ionicons name="videocam-outline" size={25} color={C.white} /></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Messages')}><Ionicons name="chatbubbles-outline" size={25} color={C.white} /></TouchableOpacity><TouchableOpacity onPress={() => navigation.navigate('Discover')}><Ionicons name="search-outline" size={25} color={C.white} /></TouchableOpacity></View></View>
     <View style={s.uploadBox}>
       <TextInput value={caption} onChangeText={setCaption} placeholder="Write a caption for your video…" placeholderTextColor={C.muted} style={[s.input, { marginBottom: 8 }]} maxLength={300} />
       <TouchableOpacity style={s.primary} onPress={uploadVideo} disabled={busy}><Text style={s.primaryText}>{busy ? 'Please wait…' : '＋ Upload a video'}</Text></TouchableOpacity>
