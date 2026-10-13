@@ -127,7 +127,7 @@ function HomeScreen({ navigation }) {
         const { error } = await supabase.from('stream_video_likes').insert({ video_id: videoId, user_id: userId });
         if (error) throw error;
       }
-      Alert.alert('Like updated', existing ? 'You removed your like.' : 'You liked this video.');
+      setVideos(current => current.map(video => video.id === videoId ? { ...video, likedByMe: !existing, likeCount: Math.max(0, (video.likeCount || 0) + (existing ? -1 : 1)) } : video));
     } catch (error) { Alert.alert('Like failed', error.message || 'Please try again.'); }
   }
 
