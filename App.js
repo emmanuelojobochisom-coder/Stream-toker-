@@ -63,12 +63,19 @@ function HomeScreen({ navigation }) {
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getUser().then(({ data }) => { if (active) setUserId(data?.user?.id || null); });
-    loadVideos();
+    (async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) console.log('User lookup error:', error.message);
+      const id = data?.user?.id || null;
+      if (active) {
+        setUserId(id);
+        await loadVideos(id);
+      }
+    })();
     return () => { active = false; };
   }, []);
 
-  async function loadVideos() {
+  async function loadVideos(currentUserId = userId) {
     setBusy(true);
     try {
       const { data, error } = await supabase.from('stream_videos')
@@ -79,11 +86,11 @@ function HomeScreen({ navigation }) {
         const { data: urlData } = await supabase.storage.from('stream-toker-videos').createSignedUrl(video.storage_path, 3600);
         const { data: likesData, error: likesError } = await supabase.from('stream_video_likes').select('user_id').eq('video_id', video.id);
         if (likesError) throw likesError;
-        return { ...video, playbackUrl: urlData?.signedUrl || null, likeCount: likesData?.length || 0, likedByMe: !!userId && (likesData || []).some(like => like.user_id === userId) };
+        return { ...video, playbackUrl: urlData?.signedUrl || null, likeCount: likesData?.length || 0, likedByMe: !!currentUserId && (likesData || []).some(like => like.user_id === currentUserId) };
       }));
       setVideos(withUrls);
     } catch (error) {
-      Alert.alert('Feed needs setup', 'The video database is not ready yet. Run supabase/real_video_features.sql in your Supabase SQL Editor.\n\n' + (error.message || 'Please try again.'));
+      Alert.alert('Feed needs setup', 'Could not load the video feed. Check your connection and Supabase permissions.\n\n' + (error.message || 'Please try again.'));
     } finally { setBusy(false); }
   }
 
@@ -145,10 +152,10 @@ function HomeScreen({ navigation }) {
     setCommentsBusy(true);
     try {
       const { data, error } = await supabase.from('stream_video_comments')
-        .select('id, user_id, comment_text, created_at')
+        .select('id, user_id, comment_text, created_at, profiles(username)')
         .eq('video_id', videoId).order('created_at', { ascending: true }).limit(100);
       if (error) throw error;
-      setComments(data || []);
+      setComments((data || []).map(comment => ({ ...comment, username: comment.profiles?.username || null })));
     } catch (error) {
       Alert.alert('Comments unavailable', error.message || 'Could not load comments.');
     } finally { setCommentsBusy(false); }
@@ -161,9 +168,9 @@ function HomeScreen({ navigation }) {
     try {
       const { data, error } = await supabase.from('stream_video_comments')
         .insert({ video_id: commentVideo, user_id: userId, comment_text: text })
-        .select('id, user_id, comment_text, created_at').single();
+        .select('id, user_id, comment_text, created_at, profiles(username)').single();
       if (error) throw error;
-      setComments(current => [...current, data]);
+      setComments(current => [...current, { ...data, username: data.profiles?.username || null }]);
       setCommentText('');
     } catch (error) {
       Alert.alert('Comment failed', error.message || 'Please try again.');
@@ -187,7 +194,7 @@ function HomeScreen({ navigation }) {
           <View style={s.commentHeader}><Text style={s.heading}>Comments</Text><TouchableOpacity onPress={() => setCommentVideo(null)}><Ionicons name="close" size={27} color={C.white} /></TouchableOpacity></View>
           {commentsBusy && comments.length === 0 ? <ActivityIndicator color={C.pink} /> : null}
           <ScrollView style={s.commentList} contentContainerStyle={{ paddingBottom: 12 }}>
-            {comments.map(comment => <View key={comment.id} style={s.commentRow}><Text style={s.commentUser}>Creator</Text><Text style={s.bodyText}>{comment.comment_text}</Text></View>)}
+            {comments.map(comment => <View key={comment.id} style={s.commentRow}><Text style={s.commentUser}>@{comment.username || 'creator'}</Text><Text style={s.bodyText}>{comment.comment_text}</Text></View>)}
             {!commentsBusy && comments.length === 0 ? <Text style={s.muted}>No comments yet. Start the conversation.</Text> : null}
           </ScrollView>
           <View style={s.commentComposer}><TextInput value={commentText} onChangeText={setCommentText} placeholder="Write a comment…" placeholderTextColor={C.muted} style={[s.input, { flex: 1, marginBottom: 0 }]} maxLength={1000} multiline /><TouchableOpacity style={s.sendButton} onPress={sendComment} disabled={commentsBusy || !commentText.trim()}><Ionicons name="send" size={22} color={C.white} /></TouchableOpacity></View>
