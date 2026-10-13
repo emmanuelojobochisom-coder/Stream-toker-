@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { supabase } from "./lib/supabase";
+import { supabase } from "../lib/supabase";
 
 const C = { bg: "#08080c", card: "#17171f", border: "#33333d", pink: "#ff2d55", white: "#fff", muted: "#aaa" };
 export default function LiveGiftsScreen({ navigation }) {
