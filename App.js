@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -50,8 +52,116 @@ function AuthScreen() {
 }
 
 function HomeScreen({ navigation }) {
-  const [liked, setLiked] = useState(false);
-  return <View style={s.screen}><View style={s.top}><Text style={s.logoSmall}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><TouchableOpacity onPress={() => navigation.navigate('Discover')}><Ionicons name="search-outline" size={25} color={C.white} /></TouchableOpacity></View><View style={s.video}><Ionicons name="play-circle-outline" size={64} color={C.white} /><Text style={s.videoTitle}>Your video feed starts here</Text><Text style={s.muted}>Connect your account and start sharing videos.</Text><Text style={s.demoNote}>Sample video feed is not connected yet.</Text></View><View style={s.actions}><TouchableOpacity style={s.action} onPress={() => setLiked(!liked)}><Ionicons name={liked ? 'heart' : 'heart-outline'} size={27} color={liked ? C.pink : C.white} /><Text style={s.muted}>{liked ? 'Liked' : 'Like'}</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={() => Alert.alert('Comments', 'Comments will be available when video comments are connected to the database.')}><Ionicons name="chatbubble-outline" size={27} color={C.white} /><Text style={s.muted}>Comment</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={() => Alert.alert('Share', 'Video sharing will be available when published videos are connected.')}><Ionicons name="paper-plane-outline" size={27} color={C.white} /><Text style={s.muted}>Share</Text></TouchableOpacity></View><BottomNav navigation={navigation} current="Home" /></View>;
+  const [videos, setVideos] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [userId, setUserId] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getUser().then(({ data }) => { if (active) setUserId(data?.user?.id || null); });
+    loadVideos();
+    return () => { active = false; };
+  }, []);
+
+  async function loadVideos() {
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.from('stream_videos')
+        .select('id, user_id, caption, storage_path, created_at')
+        .order('created_at', { ascending: false }).limit(30);
+      if (error) throw error;
+      const withUrls = await Promise.all((data || []).map(async video => {
+        const { data: urlData } = await supabase.storage.from('stream-toker-videos').createSignedUrl(video.storage_path, 3600);
+        return { ...video, playbackUrl: urlData?.signedUrl || null };
+      }));
+      setVideos(withUrls);
+    } catch (error) {
+      Alert.alert('Feed needs setup', 'The video database is not ready yet. Run supabase/real_video_features.sql in your Supabase SQL Editor.\n\n' + (error.message || 'Please try again.'));
+    } finally { setBusy(false); }
+  }
+
+  async function uploadVideo() {
+    if (!userId) return Alert.alert('Log in required', 'Log in before uploading a video.');
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return Alert.alert('Permission needed', 'Allow photo and video access to choose a video.');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'], allowsEditing: false, quality: 1, videoMaxDuration: 180
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    setBusy(true);
+    try {
+      const asset = result.assets[0];
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const extension = (asset.fileName || asset.uri.split('/').pop() || 'upload.mp4').split('.').pop().split('?')[0] || 'mp4';
+      const path = userId + '/' + Date.now() + '.' + extension;
+      const contentType = asset.mimeType || 'video/mp4';
+      const { error: storageError } = await supabase.storage.from('stream-toker-videos')
+        .upload(path, blob, { contentType, upsert: false });
+      if (storageError) throw storageError;
+      const { error: rowError } = await supabase.from('stream_videos')
+        .insert({ user_id: userId, caption: caption.trim(), storage_path: path });
+      if (rowError) {
+        await supabase.storage.from('stream-toker-videos').remove([path]);
+        throw rowError;
+      }
+      setCaption('');
+      Alert.alert('Video published', 'Your video has been added to the feed.');
+      await loadVideos();
+    } catch (error) {
+      Alert.alert('Upload failed', error.message || 'Please try again.');
+    } finally { setBusy(false); }
+  }
+
+  async function toggleLike(videoId) {
+    if (!userId) return Alert.alert('Log in required', 'Log in to like videos.');
+    try {
+      const { data: existing, error: findError } = await supabase.from('stream_video_likes')
+        .select('id').eq('video_id', videoId).eq('user_id', userId).maybeSingle();
+      if (findError) throw findError;
+      if (existing) {
+        const { error } = await supabase.from('stream_video_likes').delete().eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('stream_video_likes').insert({ video_id: videoId, user_id: userId });
+        if (error) throw error;
+      }
+      Alert.alert('Like updated', existing ? 'You removed your like.' : 'You liked this video.');
+    } catch (error) { Alert.alert('Like failed', error.message || 'Please try again.'); }
+  }
+
+  async function addComment(videoId) {
+    if (!userId) return Alert.alert('Log in required', 'Log in to comment.');
+    Alert.alert('Comments', 'The comments table is connected. The comment composer will be added next.');
+  }
+
+  return <View style={s.screen}>
+    <View style={s.top}><Text style={s.logoSmall}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><TouchableOpacity onPress={() => navigation.navigate('Discover')}><Ionicons name="search-outline" size={25} color={C.white} /></TouchableOpacity></View>
+    <View style={s.uploadBox}>
+      <TextInput value={caption} onChangeText={setCaption} placeholder="Write a caption for your video…" placeholderTextColor={C.muted} style={[s.input, { marginBottom: 8 }]} maxLength={300} />
+      <TouchableOpacity style={s.primary} onPress={uploadVideo} disabled={busy}><Text style={s.primaryText}>{busy ? 'Please wait…' : '＋ Upload a video'}</Text></TouchableOpacity>
+    </View>
+    <FlatList data={videos} keyExtractor={item => item.id} onRefresh={loadVideos} refreshing={busy}
+      ListEmptyComponent={<View style={s.emptyFeed}><Ionicons name="videocam-outline" size={54} color={C.pink} /><Text style={s.videoTitle}>Your feed is ready for creators</Text><Text style={s.muted}>Upload a video to start building the Stream Toker feed.</Text></View>}
+      renderItem={({ item }) => <VideoPost item={item} onLike={() => toggleLike(item.id)} onComment={() => addComment(item.id)} />}
+      contentContainerStyle={{ paddingBottom: 12 }} />
+    <BottomNav navigation={navigation} current="Home" />
+  </View>;
+}
+
+function VideoPost({ item, onLike, onComment }) {
+  const player = useVideoPlayer(item.playbackUrl || '', p => { p.loop = true; });
+  return <View style={s.postCard}>
+    {item.playbackUrl ? <VideoView player={player} style={s.realVideo} contentFit="contain" nativeControls allowsFullscreen /> :
+      <View style={s.videoUnavailable}><Ionicons name="videocam-outline" size={48} color={C.muted} /><Text style={s.muted}>Video link unavailable. Pull down to refresh.</Text></View>}
+    <Text style={s.bodyText}>{item.caption || 'A new Stream Toker video'}</Text>
+    <Text style={s.muted}>Creator · {new Date(item.created_at).toLocaleDateString()}</Text>
+    <View style={s.postActions}>
+      <TouchableOpacity style={s.action} onPress={onLike}><Ionicons name="heart-outline" size={25} color={C.pink} /><Text style={s.muted}>Like</Text></TouchableOpacity>
+      <TouchableOpacity style={s.action} onPress={onComment}><Ionicons name="chatbubble-outline" size={25} color={C.white} /><Text style={s.muted}>Comment</Text></TouchableOpacity>
+    </View>
+  </View>;
 }
 function DiscoverScreen({ navigation }) {
   const [query, setQuery] = useState(''); const [profiles, setProfiles] = useState([]); const [busy, setBusy] = useState(false);
@@ -66,4 +176,4 @@ function ProfileScreen({ navigation }) {
 }
 function BottomNav({ navigation, current }) { return <View style={s.nav}>{[['Home','home-outline'],['Discover','compass-outline'],['Profile','person-outline']].map(([name, icon]) => <TouchableOpacity key={name} style={s.navItem} onPress={() => navigation.navigate(name)}><Ionicons name={icon} size={23} color={current === name ? C.pink : C.muted} /><Text style={{ color: current === name ? C.pink : C.muted, fontSize: 12 }}>{name}</Text></TouchableOpacity>)}</View>; }
 
-const s = StyleSheet.create({ root: { flex: 1, backgroundColor: C.bg }, screen: { flex: 1, backgroundColor: C.bg }, center: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 12 }, authWrap: { flex: 1, backgroundColor: C.bg }, authContent: { flexGrow: 1, justifyContent: 'center', padding: 22 }, logo: { color: C.white, fontSize: 30, fontWeight: '900', textAlign: 'center', letterSpacing: 1 }, logoSmall: { color: C.white, fontSize: 20, fontWeight: '900' }, subtitle: { color: C.muted, textAlign: 'center', marginTop: 8, marginBottom: 28 }, card: { backgroundColor: C.card, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: C.border }, heading: { color: C.white, fontSize: 23, fontWeight: '800', marginBottom: 16 }, input: { color: C.white, backgroundColor: '#101016', borderColor: C.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 12, fontSize: 15 }, passwordRow: { position: 'relative', justifyContent: 'center' }, passwordInput: { paddingRight: 48 }, eyeButton: { position: 'absolute', right: 14, top: 0, bottom: 12, justifyContent: 'center', alignItems: 'center' }, primary: { backgroundColor: C.pink, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 }, primaryText: { color: C.white, fontWeight: '800', fontSize: 15 }, switch: { alignItems: 'center', paddingTop: 20 }, muted: { color: C.muted, fontSize: 13 }, bodyText: { color: C.white, fontSize: 15, marginTop: 5 }, top: { paddingHorizontal: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomColor: C.border, borderBottomWidth: 1 }, video: { flex: 1, margin: 16, borderRadius: 18, backgroundColor: '#20202a', alignItems: 'center', justifyContent: 'center', padding: 24 }, videoTitle: { color: C.white, fontWeight: '800', fontSize: 20, marginTop: 14, marginBottom: 8, textAlign: 'center' }, demoNote: { color: C.muted, fontSize: 12, marginTop: 20, textAlign: 'center' }, actions: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 12 }, action: { alignItems: 'center', gap: 4 }, nav: { flexDirection: 'row', justifyContent: 'space-around', borderTopColor: C.border, borderTopWidth: 1, paddingTop: 10, paddingBottom: 8 }, navItem: { alignItems: 'center', gap: 4, minWidth: 70 }, searchRow: { flexDirection: 'row', padding: 14, gap: 8 }, searchButton: { backgroundColor: C.pink, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' }, profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border }, profileCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 } });
+const s = StyleSheet.create({ uploadBox: { padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }, postCard: { margin: 14, padding: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border }, realVideo: { width: '100%', height: 360, backgroundColor: '#000', borderRadius: 10 }, videoUnavailable: { height: 220, backgroundColor: '#101016', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 10 }, postActions: { flexDirection: 'row', gap: 28, paddingTop: 12 }, emptyFeed: { alignItems: 'center', justifyContent: 'center', padding: 35, gap: 12 }, root: { flex: 1, backgroundColor: C.bg }, screen: { flex: 1, backgroundColor: C.bg }, center: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 12 }, authWrap: { flex: 1, backgroundColor: C.bg }, authContent: { flexGrow: 1, justifyContent: 'center', padding: 22 }, logo: { color: C.white, fontSize: 30, fontWeight: '900', textAlign: 'center', letterSpacing: 1 }, logoSmall: { color: C.white, fontSize: 20, fontWeight: '900' }, subtitle: { color: C.muted, textAlign: 'center', marginTop: 8, marginBottom: 28 }, card: { backgroundColor: C.card, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: C.border }, heading: { color: C.white, fontSize: 23, fontWeight: '800', marginBottom: 16 }, input: { color: C.white, backgroundColor: '#101016', borderColor: C.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 12, fontSize: 15 }, passwordRow: { position: 'relative', justifyContent: 'center' }, passwordInput: { paddingRight: 48 }, eyeButton: { position: 'absolute', right: 14, top: 0, bottom: 12, justifyContent: 'center', alignItems: 'center' }, primary: { backgroundColor: C.pink, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 }, primaryText: { color: C.white, fontWeight: '800', fontSize: 15 }, switch: { alignItems: 'center', paddingTop: 20 }, muted: { color: C.muted, fontSize: 13 }, bodyText: { color: C.white, fontSize: 15, marginTop: 5 }, top: { paddingHorizontal: 18, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomColor: C.border, borderBottomWidth: 1 }, video: { flex: 1, margin: 16, borderRadius: 18, backgroundColor: '#20202a', alignItems: 'center', justifyContent: 'center', padding: 24 }, videoTitle: { color: C.white, fontWeight: '800', fontSize: 20, marginTop: 14, marginBottom: 8, textAlign: 'center' }, demoNote: { color: C.muted, fontSize: 12, marginTop: 20, textAlign: 'center' }, actions: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 12 }, action: { alignItems: 'center', gap: 4 }, nav: { flexDirection: 'row', justifyContent: 'space-around', borderTopColor: C.border, borderTopWidth: 1, paddingTop: 10, paddingBottom: 8 }, navItem: { alignItems: 'center', gap: 4, minWidth: 70 }, searchRow: { flexDirection: 'row', padding: 14, gap: 8 }, searchButton: { backgroundColor: C.pink, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' }, profileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border }, profileCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 } });
