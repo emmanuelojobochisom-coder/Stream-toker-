@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -50,8 +52,116 @@ function AuthScreen() {
 }
 
 function HomeScreen({ navigation }) {
-  const [liked, setLiked] = useState(false);
-  return <View style={s.screen}><View style={s.top}><Text style={s.logoSmall}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><TouchableOpacity onPress={() => navigation.navigate('Discover')}><Ionicons name="search-outline" size={25} color={C.white} /></TouchableOpacity></View><View style={s.video}><Ionicons name="play-circle-outline" size={64} color={C.white} /><Text style={s.videoTitle}>Your video feed starts here</Text><Text style={s.muted}>Connect your account and start sharing videos.</Text><Text style={s.demoNote}>Sample video feed is not connected yet.</Text></View><View style={s.actions}><TouchableOpacity style={s.action} onPress={() => setLiked(!liked)}><Ionicons name={liked ? 'heart' : 'heart-outline'} size={27} color={liked ? C.pink : C.white} /><Text style={s.muted}>{liked ? 'Liked' : 'Like'}</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={() => Alert.alert('Comments', 'Comments will be available when video comments are connected to the database.')}><Ionicons name="chatbubble-outline" size={27} color={C.white} /><Text style={s.muted}>Comment</Text></TouchableOpacity><TouchableOpacity style={s.action} onPress={() => Alert.alert('Share', 'Video sharing will be available when published videos are connected.')}><Ionicons name="paper-plane-outline" size={27} color={C.white} /><Text style={s.muted}>Share</Text></TouchableOpacity></View><BottomNav navigation={navigation} current="Home" /></View>;
+  const [videos, setVideos] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [userId, setUserId] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    supabase.auth.getUser().then(({ data }) => { if (active) setUserId(data?.user?.id || null); });
+    loadVideos();
+    return () => { active = false; };
+  }, []);
+
+  async function loadVideos() {
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.from('stream_videos')
+        .select('id, user_id, caption, storage_path, created_at')
+        .order('created_at', { ascending: false }).limit(30);
+      if (error) throw error;
+      const withUrls = await Promise.all((data || []).map(async video => {
+        const { data: urlData } = await supabase.storage.from('stream-toker-videos').createSignedUrl(video.storage_path, 3600);
+        return { ...video, playbackUrl: urlData?.signedUrl || null };
+      }));
+      setVideos(withUrls);
+    } catch (error) {
+      Alert.alert('Feed needs setup', 'The video database is not ready yet. Run supabase/real_video_features.sql in your Supabase SQL Editor.\n\n' + (error.message || 'Please try again.'));
+    } finally { setBusy(false); }
+  }
+
+  async function uploadVideo() {
+    if (!userId) return Alert.alert('Log in required', 'Log in before uploading a video.');
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return Alert.alert('Permission needed', 'Allow photo and video access to choose a video.');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'], allowsEditing: false, quality: 1, videoMaxDuration: 180
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    setBusy(true);
+    try {
+      const asset = result.assets[0];
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const extension = (asset.fileName || asset.uri.split('/').pop() || 'upload.mp4').split('.').pop().split('?')[0] || 'mp4';
+      const path = userId + '/' + Date.now() + '.' + extension;
+      const contentType = asset.mimeType || 'video/mp4';
+      const { error: storageError } = await supabase.storage.from('stream-toker-videos')
+        .upload(path, blob, { contentType, upsert: false });
+      if (storageError) throw storageError;
+      const { error: rowError } = await supabase.from('stream_videos')
+        .insert({ user_id: userId, caption: caption.trim(), storage_path: path });
+      if (rowError) {
+        await supabase.storage.from('stream-toker-videos').remove([path]);
+        throw rowError;
+      }
+      setCaption('');
+      Alert.alert('Video published', 'Your video has been added to the feed.');
+      await loadVideos();
+    } catch (error) {
+      Alert.alert('Upload failed', error.message || 'Please try again.');
+    } finally { setBusy(false); }
+  }
+
+  async function toggleLike(videoId) {
+    if (!userId) return Alert.alert('Log in required', 'Log in to like videos.');
+    try {
+      const { data: existing, error: findError } = await supabase.from('stream_video_likes')
+        .select('id').eq('video_id', videoId).eq('user_id', userId).maybeSingle();
+      if (findError) throw findError;
+      if (existing) {
+        const { error } = await supabase.from('stream_video_likes').delete().eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('stream_video_likes').insert({ video_id: videoId, user_id: userId });
+        if (error) throw error;
+      }
+      Alert.alert('Like updated', existing ? 'You removed your like.' : 'You liked this video.');
+    } catch (error) { Alert.alert('Like failed', error.message || 'Please try again.'); }
+  }
+
+  async function addComment(videoId) {
+    if (!userId) return Alert.alert('Log in required', 'Log in to comment.');
+    Alert.alert('Comments', 'The comments table is connected. The comment composer will be added next.');
+  }
+
+  return <View style={s.screen}>
+    <View style={s.top}><Text style={s.logoSmall}>STREAM <Text style={{ color: C.pink }}>TOKER</Text></Text><TouchableOpacity onPress={() => navigation.navigate('Discover')}><Ionicons name="search-outline" size={25} color={C.white} /></TouchableOpacity></View>
+    <View style={s.uploadBox}>
+      <TextInput value={caption} onChangeText={setCaption} placeholder="Write a caption for your video…" placeholderTextColor={C.muted} style={[s.input, { marginBottom: 8 }]} maxLength={300} />
+      <TouchableOpacity style={s.primary} onPress={uploadVideo} disabled={busy}><Text style={s.primaryText}>{busy ? 'Please wait…' : '＋ Upload a video'}</Text></TouchableOpacity>
+    </View>
+    <FlatList data={videos} keyExtractor={item => item.id} onRefresh={loadVideos} refreshing={busy}
+      ListEmptyComponent={<View style={s.emptyFeed}><Ionicons name="videocam-outline" size={54} color={C.pink} /><Text style={s.videoTitle}>Your feed is ready for creators</Text><Text style={s.muted}>Upload a video to start building the Stream Toker feed.</Text></View>}
+      renderItem={({ item }) => <VideoPost item={item} onLike={() => toggleLike(item.id)} onComment={() => addComment(item.id)} />}
+      contentContainerStyle={{ paddingBottom: 12 }} />
+    <BottomNav navigation={navigation} current="Home" />
+  </View>;
+}
+
+function VideoPost({ item, onLike, onComment }) {
+  const player = useVideoPlayer(item.playbackUrl || '', p => { p.loop = true; });
+  return <View style={s.postCard}>
+    {item.playbackUrl ? <VideoView player={player} style={s.realVideo} contentFit="contain" nativeControls allowsFullscreen /> :
+      <View style={s.videoUnavailable}><Ionicons name="videocam-outline" size={48} color={C.muted} /><Text style={s.muted}>Video link unavailable. Pull down to refresh.</Text></View>}
+    <Text style={s.bodyText}>{item.caption || 'A new Stream Toker video'}</Text>
+    <Text style={s.muted}>Creator · {new Date(item.created_at).toLocaleDateString()}</Text>
+    <View style={s.postActions}>
+      <TouchableOpacity style={s.action} onPress={onLike}><Ionicons name="heart-outline" size={25} color={C.pink} /><Text style={s.muted}>Like</Text></TouchableOpacity>
+      <TouchableOpacity style={s.action} onPress={onComment}><Ionicons name="chatbubble-outline" size={25} color={C.white} /><Text style={s.muted}>Comment</Text></TouchableOpacity>
+    </View>
+  </View>;
 }
 function DiscoverScreen({ navigation }) {
   const [query, setQuery] = useState(''); const [profiles, setProfiles] = useState([]); const [busy, setBusy] = useState(false);
