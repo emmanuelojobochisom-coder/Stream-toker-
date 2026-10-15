@@ -26,6 +26,7 @@ jobs:
         run: |
           test -f package.json
           test -f package-lock.json
+          npm install --package-lock-only
           npm ci
 
       - name: Build fresh APK with Expo
