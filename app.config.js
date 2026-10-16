@@ -9,7 +9,8 @@ export default {
     sdkVersion: "53.0.0",
 
     android: {
-      package: "com.streamtoker.app"
+      package: "com.streamtoker.app",
+      permissions: ["CAMERA", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]
     },
 
     ios: {
