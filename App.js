@@ -84,7 +84,7 @@ function HomeScreen({ navigation }) {
         .order('created_at', { ascending: false }).limit(30);
       if (error) throw error;
       const withUrls = await Promise.all((data || []).map(async video => {
-        const { data: urlData } = await supabase.storage.from('stream-toker-videos').createSignedUrl(video.storage_path, 3600);
+        const { data: urlData } = await supabase.storage.from('videos').createSignedUrl(video.storage_path, 3600);
         const { data: likesData, error: likesError } = await supabase.from('stream_video_likes').select('user_id').eq('video_id', video.id);
         if (likesError) throw likesError;
         return { ...video, playbackUrl: urlData?.signedUrl || null, likeCount: likesData?.length || 0, likedByMe: !!currentUserId && (likesData || []).some(like => like.user_id === currentUserId) };
@@ -111,13 +111,13 @@ function HomeScreen({ navigation }) {
       const extension = (asset.fileName || asset.uri.split('/').pop() || 'upload.mp4').split('.').pop().split('?')[0] || 'mp4';
       const path = userId + '/' + Date.now() + '.' + extension;
       const contentType = asset.mimeType || 'video/mp4';
-      const { error: storageError } = await supabase.storage.from('stream-toker-videos')
+      const { error: storageError } = await supabase.storage.from('videos')
         .upload(path, blob, { contentType, upsert: false });
       if (storageError) throw storageError;
       const { error: rowError } = await supabase.from('stream_videos')
         .insert({ user_id: userId, caption: caption.trim(), storage_path: path });
       if (rowError) {
-        await supabase.storage.from('stream-toker-videos').remove([path]);
+        await supabase.storage.from('videos').remove([path]);
         throw rowError;
       }
       setCaption('');
