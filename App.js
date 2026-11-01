@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { supabase } from './lib/supabase';
+import { checkAppwriteConnection } from './lib/appwrite';
 
 const Stack = createNativeStackNavigator();
 const C = { bg: '#08080c', card: '#17171f', border: '#33333d', pink: '#ff2d55', white: '#fff', muted: '#aaa', green: '#30d158' };
@@ -14,6 +15,12 @@ const C = { bg: '#08080c', card: '#17171f', border: '#33333d', pink: '#ff2d55', 
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    checkAppwriteConnection()
+      .then(() => console.log('Appwrite connection: healthy'))
+      .catch(error => console.log('Appwrite connection check:', error.message));
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     supabase.auth.getSession().then(({ data, error }) => {
