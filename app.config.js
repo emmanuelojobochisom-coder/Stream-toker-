@@ -14,7 +14,11 @@ export default {
     },
 
     ios: {
-      bundleIdentifier: "com.streamtoker.app"
+      bundleIdentifier: "com.streamtoker.app",
+      infoPlist: {
+        NSCameraUsageDescription: "Stream Toker uses your camera when you start a live video.",
+        NSMicrophoneUsageDescription: "Stream Toker uses your microphone when you start or join a live video."
+      }
     },
 
     owner: "stream-toker-2",
